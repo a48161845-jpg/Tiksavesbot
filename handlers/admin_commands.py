@@ -308,33 +308,40 @@ async def broadcast_cmd(message: Message):
 
     # Extract text after /broadcast, preserving Telegram entities as HTML
     from aiogram.utils.text_decorations import html_decoration
-    raw = (message.text or "").strip()
-    cmd_end = raw.find(" ")
+    msg_text = message.text or ""
+    msg_entities = message.entities or []
+
+    # Find where the command word ends (first space after /broadcast)
+    cmd_end = msg_text.find(" ")
     if cmd_end == -1:
         await message.answer("❌ Пример:\n" f"{code('/broadcast Текст рассылки')}", parse_mode="HTML")
         return
 
-    # Slice text and entities after the command word, then convert to HTML
-    msg_text = message.text or ""
-    msg_entities = message.entities or []
-    # Find offset where broadcast text starts (after "/broadcast ")
-    prefix_len = cmd_end + 1
-    broadcast_raw = msg_text[prefix_len:].strip()
-    if not broadcast_raw:
+    # text_offset is the character position where broadcast text begins (skip leading spaces)
+    text_offset = cmd_end + 1
+    broadcast_raw = msg_text[text_offset:]
+    # Strip leading whitespace and adjust offset accordingly
+    lstripped = broadcast_raw.lstrip()
+    if not lstripped:
         await message.answer("❌ Пример:\n" f"{code('/broadcast Текст рассылки')}", parse_mode="HTML")
         return
+    text_offset += len(broadcast_raw) - len(lstripped)
+    broadcast_raw = lstripped
 
-    # Shift and filter entities that belong to broadcast text
+    # Shift and filter entities that belong to broadcast text (after the command)
     shifted_entities = []
-    text_offset = msg_text.index(broadcast_raw)
     for ent in msg_entities:
         ent_start = ent.offset
         ent_end = ent.offset + ent.length
         if ent_end <= text_offset:
-            continue  # entity belongs to the command part
-        # Shift offset relative to broadcast text
+            continue  # entity is part of the command word, skip
+        new_offset = max(0, ent_start - text_offset)
+        # Clamp length so entity doesn't go out of broadcast_raw bounds
+        new_length = min(ent.length, len(broadcast_raw) - new_offset)
+        if new_length <= 0:
+            continue
         shifted_ent = type(ent)(
-            **{**ent.model_dump(), "offset": max(0, ent_start - text_offset), "length": ent.length}
+            **{**ent.model_dump(), "offset": new_offset, "length": new_length}
         )
         shifted_entities.append(shifted_ent)
 

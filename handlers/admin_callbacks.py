@@ -81,6 +81,8 @@ async def admin_cb(call: CallbackQuery):
         if call.message:
             with contextlib.suppress(Exception):
                 await call.message.delete()
+        if not call.message:
+            return
         if kind == "reminder":
             pending_admin_broadcast_text.pop(uid, None)
             await do_broadcast(call.message, uid, label, REMINDER_MSG)
@@ -127,9 +129,11 @@ async def admin_cb(call: CallbackQuery):
         pending_admin_broadcast_text.pop(uid, None)
         pending_admin_broadcast_source[uid] = "panel"
         users_cnt = len(store.data.get("users", []))
-        if call.message:
-            with contextlib.suppress(Exception):
-                await call.message.delete()
+        if not call.message:
+            await call.answer("Ошибка: сообщение недоступно.", show_alert=True)
+            return
+        with contextlib.suppress(Exception):
+            await call.message.delete()
         await call.message.answer(
             "📣 <b>Подтверждение рассылки</b>\n\n"
             "Тип: <b>Напоминание</b>\n"
@@ -146,9 +150,11 @@ async def admin_cb(call: CallbackQuery):
         pending_admin_broadcast_text.pop(uid, None)
         pending_admin_broadcast_source[uid] = "panel"
         users_cnt = len(store.data.get("users", []))
-        if call.message:
-            with contextlib.suppress(Exception):
-                await call.message.delete()
+        if not call.message:
+            await call.answer("Ошибка: сообщение недоступно.", show_alert=True)
+            return
+        with contextlib.suppress(Exception):
+            await call.message.delete()
         await call.message.answer(
             "📣 <b>Подтверждение рассылки</b>\n\n"
             "Тип: <b>Реклама</b>\n"
