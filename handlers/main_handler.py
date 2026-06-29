@@ -184,8 +184,15 @@ async def main_handler(message: Message, client: TikWMClient, switcher: Provider
 
     except Exception as e:
         reason = clamp_reason(e)
-        store.inc_error("handler", e)
         low = reason.lower()
+
+        # Видео слишком большое — тихая ошибка, не логируем в канал
+        if "file too large" in low:
+            with contextlib.suppress(Exception):
+                await status.edit_text("❌ Видео слишком большое для отправки через Telegram (лимит 60 МБ).")
+            return
+
+        store.inc_error("handler", e)
         msg = "❌ Не удалось скачать. Попробуй позже."
         if any(x in low for x in ["private", "приват", "недоступ", "unavailable"]):
             msg = "❌ Видео приватное или недоступно."

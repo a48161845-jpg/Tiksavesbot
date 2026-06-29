@@ -47,6 +47,11 @@ async def ban_cmd(message: Message):
     dur_raw = parts[2]
     reason = parts[3].strip()
 
+    # Нельзя банить админов
+    if is_admin(uid):
+        await message.answer("❌ Нельзя банить администратора.", parse_mode="HTML")
+        return
+
     existing = store.get_ban(uid)
     if existing:
         until_existing = int(existing.get("until", 0))
@@ -456,3 +461,133 @@ async def dbfile_cmd(message: Message):
     await message.answer("🗄 Формирую дамп БД…")
     await send_db_json(message.bot, admin_id)
     await message.answer("✅ Файл отправлен.")
+
+
+@dp.message(Command("adminadd"))
+async def adminadd_cmd(message: Message):
+    admin_id = message.from_user.id
+    admin_label = await resolve_user_label(message.bot, admin_id)
+    store.set_user_label(admin_id, admin_label)
+
+    if not is_admin(admin_id):
+        return
+    if not await gate_message(message, admin_label):
+        return
+
+    from config import ADMINS
+    if admin_id not in ADMINS:
+        await message.answer("❌ Только владелец (суперадмин) может добавлять администраторов.", parse_mode="HTML")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].strip().isdigit():
+        await message.answer(f"Использование: {code('/adminadd 123456789')}", parse_mode="HTML")
+        return
+
+    uid = int(parts[1].strip())
+    target_label = await resolve_user_label(message.bot, uid)
+    store.set_user_label(uid, target_label)
+
+    added = store.add_extra_admin(uid)
+    log_admin(admin_id, "adminadd", f"target={uid} success={added}")
+
+    if added:
+        await log_admin_action_to_channel(
+            message.bot,
+            "Добавление администратора",
+            [
+                f"👤 Кто: <b>{format_user_for_log(admin_label, admin_id)}</b>",
+                f"👑 Новый адм: <b>{format_user_for_log(target_label, uid)}</b>",
+            ],
+        )
+        await message.answer(
+            f"✅ Администратор добавлен: <b>{format_user_for_log(target_label, uid)}</b>",
+            parse_mode="HTML",
+        )
+    else:
+        await message.answer(
+            f"ℹ️ Уже является администратором: <b>{format_user_for_log(target_label, uid)}</b>",
+            parse_mode="HTML",
+        )
+
+
+@dp.message(Command("admindel"))
+async def admindel_cmd(message: Message):
+    admin_id = message.from_user.id
+    admin_label = await resolve_user_label(message.bot, admin_id)
+    store.set_user_label(admin_id, admin_label)
+
+    if not is_admin(admin_id):
+        return
+    if not await gate_message(message, admin_label):
+        return
+
+    from config import ADMINS
+    if admin_id not in ADMINS:
+        await message.answer("❌ Только владелец (суперадмин) может удалять администраторов.", parse_mode="HTML")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) != 2 or not parts[1].strip().isdigit():
+        await message.answer(f"Использование: {code('/admindel 123456789')}", parse_mode="HTML")
+        return
+
+    uid = int(parts[1].strip())
+    if uid in ADMINS:
+        await message.answer("❌ Нельзя удалить суперадмина (прописан в config).", parse_mode="HTML")
+        return
+
+    target_label = store.get_user_label(uid)
+    removed = store.del_extra_admin(uid)
+    log_admin(admin_id, "admindel", f"target={uid} success={removed}")
+
+    if removed:
+        await log_admin_action_to_channel(
+            message.bot,
+            "Удаление администратора",
+            [
+                f"👤 Кто: <b>{format_user_for_log(admin_label, admin_id)}</b>",
+                f"🚫 Удалён адм: <b>{format_user_for_log(target_label, uid)}</b>",
+            ],
+        )
+        await message.answer(
+            f"✅ Администратор удалён: <b>{format_user_for_log(target_label, uid)}</b>",
+            parse_mode="HTML",
+        )
+    else:
+        await message.answer(
+            f"ℹ️ Не является дополнительным администратором: <b>{format_user_for_log(target_label, uid)}</b>",
+            parse_mode="HTML",
+        )
+
+
+@dp.message(Command("adminlist"))
+async def adminlist_cmd(message: Message):
+    admin_id = message.from_user.id
+    admin_label = await resolve_user_label(message.bot, admin_id)
+    store.set_user_label(admin_id, admin_label)
+
+    if not is_admin(admin_id):
+        return
+    if not await gate_message(message, admin_label):
+        return
+
+    from config import ADMINS
+    lines = ["👑 <b>Список администраторов</b>\n"]
+
+    lines.append("🔒 <b>Суперадмины (config):</b>")
+    for uid2 in sorted(ADMINS):
+        lbl = store.get_user_label(uid2)
+        lines.append(f"  • <b>{format_user_for_log(lbl, uid2)}</b>")
+
+    extra = store.get_extra_admins()
+    lines.append(f"\n➕ <b>Дополнительные ({len(extra)}):</b>")
+    if extra:
+        for uid2 in sorted(extra):
+            lbl = store.get_user_label(uid2)
+            lines.append(f"  • <b>{format_user_for_log(lbl, uid2)}</b>")
+    else:
+        lines.append("  <i>нет</i>")
+
+    log_admin(admin_id, "adminlist", f"extra_count={len(extra)}")
+    await message.answer("\n".join(lines), parse_mode="HTML")
